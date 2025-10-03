@@ -9,7 +9,7 @@ from nnunetv2.paths import nnUNet_raw
 
 
 if __name__ == '__main__':
-    #base = '/home/isensee/Downloads/TotalsegmentatorMRI_dataset_v100'
+    # pre-existing datset on P drive, to be parsed local into
     ymp_source = r'P:\Carpal Animal Model\InVitro_CT_Flex\YKR241162_Pilot'
     ymp_segs = join(ymp_source,'SEG')
     
