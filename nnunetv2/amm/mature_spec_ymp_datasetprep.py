@@ -29,39 +29,22 @@ if __name__ == '__main__':
     #of the ymp_spec, gather the subset that has the 'SEG' subfolder
     ymp_spec_seg = [i for i in ymp_spec if os.path.exists(os.path.join(i,'SEG'))]
     
-    cases = [os.path.basename(s) for s in ymp_spec_seg] #Spec name
+    sid = [os.path.basename(s) for s in ymp_spec_seg] #Spec name
     base = ymp_source
 
-    # in this dataset, we're first attempting to export the combined segmentation nifti from 3d slicer
-    # so we no longer have individual label files, but a single multi-label file
-    
-    #based on online threads and searches, the labels aren't inherently saved in the nifti (great)
-    # so we will have to hardcode them here based on what we know about the data
-    # these are the labels Amy Morton/Quianna Vaughn used in 3D Slicer to create the segment
-    label_dict = {
-        'background': 0,
-        'CB2': 1,
-        'CB3': 2,
-        'CB4': 3,
-        'ICB': 4,
-        'MC2': 5,
-        'MC3': 6,
-        'MC4': 7,
-        'MC5': 8,
-        'RAD': 9,
-        'RCB': 10,
-        'UCB': 11,
-        'ULNA':12
-    }
 
+    # discover labels
+    label_fnames = nifti_files(join(ymp_spec_seg[0],'SEG'),  join=False)
+    label_dict = {i[:-7]: j + 1 for j, i in enumerate(label_fnames)}
     labelnames = list(label_dict.keys())
+    label_dict['background'] = 0
 
     if not os.path.exists(join(nnUNet_raw, target_dataset_name, 'dataset.json')):
         generate_dataset_json(
             join(nnUNet_raw, target_dataset_name),
             {1: 'CT'},  # this was a mistake we did at the beginning and we keep it like that here for consistency
             label_dict,
-            len(cases),
+            len(sid),
             '.nii.gz',
             None,
             target_dataset_name,
@@ -71,14 +54,21 @@ if __name__ == '__main__':
             converted_by = 'Amy Morton'
         )
 
-    for case in cases:
+    
+    for case in sid:
         img = nibabel.load(join(base, case,'NRRD', 'CT.nii.gz'))
 
         if not os.path.exists( join(imagesTr, case + '_0000.nii.gz')):
             nibabel.save(img, join(imagesTr, case + '_0000.nii.gz'))
 
-        seg_labeled_img = nibabel.load(join(base,case, 'SEG',f'{case}.nii.gz'))
-
+        seg_nib = nibabel.load(join(base,case,'SEG', labelnames[0] + '.nii.gz'))
+        init_seg_npy = np.asanyarray(seg_nib.dataobj)
+        init_seg_npy[init_seg_npy > 0] = label_dict[labelnames[0]]
+        for labelname in labelnames[1:]:
+            seg = nibabel.load(join(base,case,'SEG', labelname + '.nii.gz'))
+            seg = np.asanyarray(seg.dataobj)
+            init_seg_npy[seg > 0] = label_dict[labelname]
+        out = nibabel.Nifti1Image(init_seg_npy, affine=seg_nib.affine, header=seg_nib.header)
         if not os.path.exists(join(labelsTr, case + '.nii.gz')):
-            nibabel.save(seg_labeled_img, join(labelsTr, case + '.nii.gz'))
+            nibabel.save(out, join(labelsTr, case + '.nii.gz'))
 

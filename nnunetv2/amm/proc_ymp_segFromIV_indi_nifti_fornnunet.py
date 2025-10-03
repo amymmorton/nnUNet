@@ -8,7 +8,7 @@ from AutoscoperMLib import IO
 
 
 
-def exportSegmentationAsBinaryLabelmap(segmentationNode, outputFilePath):
+def exportSegmentationAsBinaryLabelmap(segmentationNode,referenceVolumeNode, outputFilePath):
     """
     Exports a segmentation node as a binary labelmap volume.
 
@@ -24,7 +24,8 @@ def exportSegmentationAsBinaryLabelmap(segmentationNode, outputFilePath):
     labelmapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
 
     # Export the segmentation to the labelmap volume
-    slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segmentationNode, labelmapNode)
+    slicer.modules.segmentations.logic().ExportVisibleSegmentsToLabelmapNode(segmentationNode, labelmapNode, referenceVolumeNode)
+
 
     # Save the labelmap volume to a file
     slicer.util.saveNode(labelmapNode, outputFilePath)
@@ -81,7 +82,7 @@ for ymp_root_this, spec_this in zip(ymp_spec_seg, spec_ids):
     # 2) Import each iv as segmentaion (openinventoeremsh)
 
     # Probably best, in this loop to alos convert to binary label map and export...
-    slicer.util.loadVolume(join(ymp_root_this,'NRRD','CT.nii.gz'))
+    volumeNode = slicer.util.loadVolume(join(ymp_root_this,'NRRD','CT.nii.gz'))
 
     for sf in seg_files:
         sfo = os.path.basename(sf)[:-3]
@@ -89,10 +90,11 @@ for ymp_root_this, spec_this in zip(ymp_spec_seg, spec_ids):
 
         segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
         segmentationNode.CreateDefaultDisplayNodes()
+    
         # Example usage:
         # Assuming you have a segmentation node named "MySegmentation" in your scene
         IO.loadSegmentation(segmentationNode, sf)
-        exportSegmentationAsBinaryLabelmap(segmentationNode, outputFile)
+        exportSegmentationAsBinaryLabelmap(segmentationNode,volumeNode, outputFile)
 
         slicer.mrmlScene.RemoveNode(segmentationNode)
 
