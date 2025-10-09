@@ -187,6 +187,16 @@ class nnUNetTrainer(object):
         self.save_every = 50
         self.disable_checkpointing = False
 
+        # Early stopping settings
+        # Monitor 'ema_fg_dice' by default. Stop if it does not improve for `early_stopping_patience` epochs
+        # but do not allow termination before `early_stopping_min_epochs` epochs have passed.
+        self.early_stopping_monitor = 'ema_fg_dice'
+        self.early_stopping_patience = 50
+        self.early_stopping_min_epochs = 100
+        self._early_stopping_counter = 0
+        self._best_for_early_stopping = None
+        self._should_early_stop = False
+
         self.was_initialized = False
 
         self.print_to_log_file("\n#######################################################################\n"
@@ -1144,6 +1154,34 @@ class nnUNetTrainer(object):
         if self.local_rank == 0:
             self.logger.plot_progress_png(self.output_folder)
 
+        # Early stopping bookkeeping: monitor configured metric (default: 'ema_fg_dice')
+        try:
+            monitored_list = self.logger.my_fantastic_logging.get(self.early_stopping_monitor, None)
+        except Exception:
+            monitored_list = None
+
+        if monitored_list is not None and len(monitored_list) > 0:
+            current_val = monitored_list[-1]
+
+            # decide whether higher is better (for dice) or lower is better (for losses)
+            lower_is_better = True if 'loss' in self.early_stopping_monitor else False
+
+            if self._best_for_early_stopping is None:
+                self._best_for_early_stopping = current_val
+                self._early_stopping_counter = 0
+            else:
+                improved = (current_val < self._best_for_early_stopping) if lower_is_better else (current_val > self._best_for_early_stopping)
+                if improved:
+                    self._best_for_early_stopping = current_val
+                    self._early_stopping_counter = 0
+                else:
+                    self._early_stopping_counter += 1
+
+            # Only allow stopping after minimum epochs have passed
+            if (self.current_epoch + 1) >= self.early_stopping_min_epochs and self._early_stopping_counter >= self.early_stopping_patience:
+                self._should_early_stop = True
+                self.print_to_log_file(f"Early stopping triggered: no improvement in {self.early_stopping_monitor} for {self._early_stopping_counter} epochs (patience={self.early_stopping_patience})")
+
         self.current_epoch += 1
 
     def save_checkpoint(self, filename: str) -> None:
@@ -1379,5 +1417,11 @@ class nnUNetTrainer(object):
                 self.on_validation_epoch_end(val_outputs)
 
             self.on_epoch_end()
+
+            # Check for early stopping flag set in on_epoch_end
+            if self._should_early_stop:
+                # only rank 0 should announce and perform any global actions
+                self.print_to_log_file('Early stopping: terminating training loop early')
+                break
 
         self.on_train_end()
